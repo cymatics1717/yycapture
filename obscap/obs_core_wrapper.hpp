@@ -4,9 +4,9 @@ class ObsCoreWrapper {
 	obs_video_info ovi = {0};
 
 public:
-	inline ObsCoreWrapper() {}
+    ObsCoreWrapper() {}
 	ObsCoreWrapper(uint32_t, uint32_t, uint32_t, uint32_t);
-	inline ~ObsCoreWrapper(){}
+    ~ObsCoreWrapper(){}
     void initVideo(void);
     void createOBS(void);
     void destroyOBS(void);

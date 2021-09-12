@@ -1,8 +1,10 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
+#include <QScreen>
 
 #include "capture_manager.hpp"
+#include "obscapture.hpp"
 
 #include <unordered_map>
 #include <iostream>
@@ -105,7 +107,6 @@ static HWND getWindowByString(const std::string &exename)
     }
     //HMONITOR target = ::MonitorFromPoint({ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
     return src;
-
 }
 
 
@@ -132,10 +133,12 @@ int main(int argc, char *argv[])
     QQuickWindow *preview = static_cast<QQuickWindow*>(engine.rootObjects().first());
     HWND hWnd = HWND(preview->winId());
 
-    CaptureManager cm(hWnd, getWindowByString("WeChat"), 60000, 1001);
-    cm.init();
-    cm.initCapture(getWindowIdByPattern("", "WeChat"));
-    cm.start();
+//    CaptureManager cm(hWnd, getWindowByString("WeChat"), 60000, 1001);
+//    cm.init();
+//    cm.initCapture(getWindowIdByPattern("", "WeChat"));
+//    cm.start();
+    OBSCapture cap(hWnd, getWindowByString("WeChat"),&app);
+    cap.start();
 
     return app.exec();
 }

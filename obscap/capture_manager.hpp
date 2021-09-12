@@ -18,9 +18,8 @@ class CaptureManager {
 	SceneWrapper outputScene;
 
 public:
-	CaptureManager() {}
 	CaptureManager(HWND, HWND, uint32_t, uint32_t);
-    ~CaptureManager(){}
+    ~CaptureManager();
 	void initCapture(const char *);
 	void start();
 	DisplayWrapper createDisplay(HWND, uint32_t, uint32_t);
@@ -28,6 +27,6 @@ public:
 	SceneWrapper createOutputScene(const char *);
 	SourceWrapper createOutputSourceByScene(SceneWrapper);
 	void AddSceneItems(SceneWrapper, CaptureSourceWrapper, HWND);
-	void CaptureManager::init();
+    void init();
 	void destroy();
 };

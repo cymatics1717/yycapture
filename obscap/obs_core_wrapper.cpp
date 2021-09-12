@@ -60,7 +60,8 @@ void ObsCoreWrapper::createOBS()
 void ObsCoreWrapper::destroyOBS()
 {
 	obs_shutdown();
-	return;
+    blog(LOG_INFO, "Number of memory leaks: %ld", bnum_allocs());
+    return;
 }
 
 obs_source_t *ObsCoreWrapper::getSourceByScene(obs_scene_t *scene)

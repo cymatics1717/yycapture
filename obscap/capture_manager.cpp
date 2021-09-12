@@ -13,28 +13,33 @@
 CaptureManager::CaptureManager(HWND viewHwnd, HWND fromHwnd, uint32_t fpsNum,
 			       uint32_t fpsDen)
 {
-	this->viewHwnd = viewHwnd;
-	this->fromHwnd = fromHwnd;
-	this->fpsNum = fpsNum;
-	this->fpsDen = fpsDen;
+    this->viewHwnd = viewHwnd;
+    this->fromHwnd = fromHwnd;
+    this->fpsNum = fpsNum;
+    this->fpsDen = fpsDen;
+}
+
+CaptureManager::~CaptureManager()
+{
+    destroy();
 }
 
 void CaptureManager::init() {
 	RECT rc;
-	GetClientRect(this->viewHwnd, &rc);
+    GetClientRect(viewHwnd, &rc);
     obsCore = ObsCoreWrapper(rc.right, rc.bottom, fpsNum, fpsDen);
-	this->obsCore.createOBS();
-	this->display = createDisplay(this->viewHwnd, rc.right, rc.bottom);
-	this->outputScene = createOutputScene("test scene");
-	this->outputSource = createOutputSourceByScene(this->outputScene);
-	this->captureSource = createCaptureSource();
+    obsCore.createOBS();
+    display = createDisplay(viewHwnd, rc.right, rc.bottom);
+    outputScene = createOutputScene("test scene");
+    outputSource = createOutputSourceByScene(outputScene);
+    captureSource = createCaptureSource();
 }
 
 void CaptureManager::destroy() {
-	//outputSource.destroy();
-	//captureSource.destroy();
-	//outputScene.destroy();
-	//display.destroy();
+    //outputSource.destroy();
+    //captureSource.destroy();
+    //outputScene.destroy();
+    //display.destroy();
 	obsCore.destroyOBS();
 }
 
@@ -122,8 +127,8 @@ void CaptureManager::AddSceneItems(SceneWrapper scene, CaptureSourceWrapper sour
 
 void CaptureManager::initCapture(const char *curId)
 {
-	this->AddSceneItems(this->outputScene, this->captureSource, this->fromHwnd);
-	this->captureSource.changeCaptureSource(curId);
+    AddSceneItems(outputScene, captureSource, fromHwnd);
+    captureSource.changeCaptureSource(curId);
 	return;
 }
 
@@ -133,6 +138,6 @@ void CaptureManager::initCapture(const char *curId)
  */
 void CaptureManager::start()
 {
-	this->display.setDisplayRenderCallback(RenderWindow);
+    display.setDisplayRenderCallback(RenderWindow);
 	return;
 }

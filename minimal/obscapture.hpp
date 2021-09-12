@@ -19,27 +19,35 @@ struct preview_output {
     obs_video_info ovi;
 };
 
-
 class OBSCapture : public QObject
 {
     Q_OBJECT
 public:
-    OBSCapture(const HWND &_preview, QObject *parent = nullptr);
+    OBSCapture(const HWND &target, const HWND &_preview, QObject *parent = nullptr);
     ~OBSCapture();
 
-    int initOBS();
+    preview_output context;
 
-    preview_output *output;
+public slots:
+    int initOBS();
+    int start();
 
 signals:
 
 
 private:
+    int ResetVideo();
+
+    obs_display_t *display;
+    obs_scene_t *scene;
+    obs_sceneitem_t *item;
+
     HWND from;
+    HWND sink;
     int stage = -1;
     obs_source_t *source = NULL;
-    gs_texrender_t *texrender = NULL;
-    gs_stagesurf_t *stagesurf = NULL;
+//    gs_texrender_t *texrender = NULL;
+//    gs_stagesurf_t *stagesurf = NULL;
 
     int cx = 800;
     int cy = 600;

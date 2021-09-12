@@ -16,6 +16,8 @@ find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core Quick REQUIRED)
 
 set(PROJECT_SOURCES
         main.cpp
+        minimal/obscapture.hpp
+        minimal/obscapture.cpp
         obscap/obs_wrapper.hpp
         obscap/capture_manager.cpp
         obscap/capture_manager.hpp
@@ -39,6 +41,7 @@ set(OBS_BUILD D:/obs/build-obs-studio-Desktop_Qt_5_15_2_MSVC2019_64bit-Debug)
 set(OBS_SOURCE D:/obs/obs-studio)
 
 include_directories(obscap)
+include_directories(minimal)
 include_directories(${OBS_SOURCE})
 include_directories(${OBSPATH}/libobs)
 add_library(libobs SHARED IMPORTED)

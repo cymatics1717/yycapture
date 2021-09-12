@@ -29,7 +29,8 @@ void DisplayWrapper::setDisplayRenderCallback(void (*callback)(void *param, uint
 
 void RenderWindow(void *data, uint32_t cx, uint32_t cy) {
 
-	obs_render_main_texture();
+//    blog(LOG_DEBUG,"%d#################%d,%d",__LINE__,cx,cy);
+    obs_render_main_texture();
 	UNUSED_PARAMETER(data);
 	UNUSED_PARAMETER(cx);
 	UNUSED_PARAMETER(cy);

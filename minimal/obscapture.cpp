@@ -2,6 +2,7 @@
 #include <util/windows/win-version.h>
 #include <dwmapi.h>
 #include <util/dstr.h>
+#include "media-io/video-frame.h"
 
 #include <Psapi.h>
 #include "plugins/win-capture/obfuscate.h"
@@ -10,43 +11,7 @@
 #define DL_D3D11 "libobs-d3d11.dll"
 #include <QDateTime>
 #include <QDebug>
-
-static int ResetVideo(void)
-{
-    struct obs_video_info ovi;
-    int ret;
-    ovi.adapter = 0;
-    ovi.base_width = 1080;
-    ovi.base_height = 1920;
-    ovi.fps_num = 144000;
-    ovi.fps_den = 1001;
-    ovi.graphics_module = DL_D3D11;
-    ovi.output_format = VIDEO_FORMAT_RGBA;
-    ovi.output_width = 720;
-    ovi.output_height = 1280;
-
-    ret = obs_reset_video(&ovi);
-    if (ret != OBS_VIDEO_SUCCESS) {
-        if (ret == OBS_VIDEO_CURRENTLY_ACTIVE) {
-            blog(LOG_WARNING, "Tried to reset when "
-                      "already active");
-            return ret;
-        }
-
-        /* Try OpenGL if DirectX fails on windows */
-        if (strcmp(ovi.graphics_module, DL_OPENGL) != 0) {
-            blog(LOG_WARNING,
-                 "Failed to initialize obs video (%d) "
-                 "with graphics_module='%s', retrying "
-                 "with graphics_module='%s'",
-                 ret, ovi.graphics_module, DL_OPENGL);
-            ovi.graphics_module = DL_OPENGL;
-            ret = obs_reset_video(&ovi);
-        }
-    }
-
-    return ret;
-}
+#include <QMetaObject>
 
 static void SetAeroEnabled(bool enable)
 {
@@ -238,29 +203,87 @@ static void get_window_title(struct dstr *name, HWND hwnd)
     free(temp);
 }
 
-static void preview_tick(void *param, float sec)
+OBSCapture::OBSCapture(const HWND &target, const HWND &_preview, QObject *parent):QObject(parent),
+    context({0}),display(nullptr),sink(target),from(_preview),scene(nullptr),item(nullptr)
 {
-    static auto last = QDateTime::currentDateTime();
-    auto now = QDateTime::currentDateTime();
-    qDebug() << last.msecsTo(now);
-    last = now;
-    UNUSED_PARAMETER(sec);
-
-    auto ctx = (struct preview_output *)param;
-
-    if (ctx->texrender)
-        gs_texrender_reset(ctx->texrender);
-}
-
-OBSCapture::OBSCapture(const HWND &_preview, QObject *parent):QObject(parent),from(_preview)
-{
-    qDebug() << initOBS();
+    initOBS();
+//    QMetaObject::invokeMethod(this,"initOBS",Qt::QueuedConnection);
 }
 
 OBSCapture::~OBSCapture()
 {
+    if(display){
+         obs_display_destroy(display);
+    }
+    if(scene){
+         obs_scene_release(scene);
+    }
+    if(source){
+         obs_source_release(source);
+    }
+    obs_set_output_source(0, nullptr);
+
     obs_shutdown();
+
+//    obs_source_release(source);
     blog(LOG_INFO, "Number of memory leaks: %ld", bnum_allocs());
+}
+
+int OBSCapture::ResetVideo(void){
+//    struct obs_video_info ovi;
+    int ret;
+    context.ovi.adapter = 0;
+    context.ovi.base_width = 1080;
+    context.ovi.base_height = 1920;
+    context.ovi.fps_num = 144000;
+    context.ovi.fps_den = 1001;
+    context.ovi.graphics_module = DL_D3D11;
+    context.ovi.output_format = VIDEO_FORMAT_RGBA;
+    context.ovi.output_width = 720;
+    context.ovi.output_height = 1280;
+
+    ret = obs_reset_video(&context.ovi);
+    if (ret != OBS_VIDEO_SUCCESS) {
+        if (ret == OBS_VIDEO_CURRENTLY_ACTIVE) {
+            blog(LOG_WARNING, "Tried to reset when "
+                      "already active");
+            return ret;
+        }
+
+        /* Try OpenGL if DirectX fails on windows */
+        if (strcmp(context.ovi.graphics_module, DL_OPENGL) != 0) {
+            blog(LOG_WARNING,
+                 "Failed to initialize obs video (%d) "
+                 "with graphics_module='%s', retrying "
+                 "with graphics_module='%s'",
+                 ret, context.ovi.graphics_module, DL_OPENGL);
+            context.ovi.graphics_module = DL_OPENGL;
+            ret = obs_reset_video(&context.ovi);
+        }
+    }
+
+    return ret;
+}
+
+static void RenderWindow(void *data, uint32_t cx, uint32_t cy) {
+
+//    blog(LOG_DEBUG,"%d#################%d,%d",__LINE__,cx,cy);
+    obs_render_main_texture();
+    UNUSED_PARAMETER(data);
+    UNUSED_PARAMETER(cx);
+    UNUSED_PARAMETER(cy);
+}
+
+static obs_display_t* CreateDisplay(HWND sink)
+{
+    gs_init_data info = {};
+    info.cx = 1280;
+    info.cy = 720;
+    info.format = GS_RGBA;
+    info.zsformat = GS_ZS_NONE;
+    info.window.hwnd = sink;
+
+    return obs_display_create(&info, 0);
 }
 
 int OBSCapture::initOBS()
@@ -286,12 +309,16 @@ int OBSCapture::initOBS()
     }
 #endif
 
+    return 0;
+}
+
+int OBSCapture::start()
+{
     source = obs_source_create("window_capture", "window capture source", NULL, nullptr);
     if (!source){
         blog(LOG_ERROR,"Couldn't create random test source");
-        return 2;
+        return 1;
     }
-
 
     RECT rc;
     GetClientRect(from, &rc);
@@ -315,34 +342,25 @@ int OBSCapture::initOBS()
             strcat_s(cur_id, sizeof(cur_id), exe.array);
         }
     }
+    dstr_free(&name);
+    dstr_free(&clazz);
+    dstr_free(&exe);
 
-    const char *setting = "window";
+
     obs_data_t *data = obs_data_create();
-    //const char *cur_id = "obs-studio - Microsoft Visual Studio:HwndWrapper[DefaultDomain;;c2d3a612-3846-463d-9141-4a7fb5e26412]:devenv.exe";
-    obs_data_set_string(data, setting, cur_id);
+    obs_data_set_string(data, "window", cur_id);
     obs_source_update(source, data);
+    obs_data_release(data);
 
-    /* ------------------------------------------------------ */
-    /* create scene and add source to scene (twice) */
-    /*obs_scene_t *scene = obs_scene_create("test scene");
-    if (!scene)
-        throw "Couldn't create scene";*/
+    scene = obs_scene_create("test scene");
+    if (!scene){
+        blog(LOG_ERROR,"Couldn't create scene");
+        return 2;
+    }
 
-    //AddTestItems(scene, source, from);
-
-    /* ------------------------------------------------------ */
-    /* set the scene as the primary draw source and go */
-    /*obs_source_t *output_source = obs_scene_get_source(scene);
-    obs_set_output_source(0, output_source);*/
-
-    /* ------------------------------------------------------ */
-    /* create display for output and set the output render callback */
-    /*DisplayContext display = CreateDisplay();
-    obs_display_add_draw_callback(display, RenderWindow, nullptr);*/
-
-    /* activate source view then window caputre can run background */
-    obs_source_inc_active(source);
-    obs_add_tick_callback(preview_tick, source);
-
+    item = obs_scene_add(scene, source);
+    obs_set_output_source(0, source);
+    display = CreateDisplay(sink);
+    obs_display_add_draw_callback(display, RenderWindow, nullptr);
     return 0;
 }
