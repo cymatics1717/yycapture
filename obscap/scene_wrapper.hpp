@@ -4,10 +4,6 @@ class SceneWrapper {
 	obs_scene_t *scene = NULL;
 
 public:
-    SceneWrapper() {}
-	SceneWrapper(const char *name);
-    ~SceneWrapper() {}
-    operator obs_scene_t *() { return scene; }
-    obs_scene_t *getScene() { return scene; }
-	void destroy();
+	inline operator obs_scene_t *() { return scene; }
+	void init(const char *name);
 };

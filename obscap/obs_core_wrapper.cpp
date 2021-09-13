@@ -2,21 +2,6 @@
 #define DL_OPENGL "libobs-opengl.dll"
 #define DL_D3D11 "libobs-d3d11.dll"
 
-ObsCoreWrapper::ObsCoreWrapper(uint32_t width, uint32_t height,
-			       uint32_t fpsNumerator,
-			       uint32_t fpsDenominator)
-{
-	ovi.adapter = 0;
-	ovi.base_width = width;
-	ovi.base_height = height;
-	ovi.fps_num = fpsNumerator;
-	ovi.fps_den = fpsDenominator;
-	ovi.graphics_module = DL_D3D11;
-	ovi.output_format = VIDEO_FORMAT_RGBA;
-	ovi.output_width = width;
-	ovi.output_height = height;
-}
-
 void ObsCoreWrapper::initVideo(void)
 {
 	int ret = obs_reset_video(&ovi);
@@ -46,33 +31,32 @@ void ObsCoreWrapper::createOBS()
 	if (!obs_startup("en-US", nullptr, nullptr))
 		throw "Couldn't create OBS";
 
+	/* init obs graphic things */
+	initVideo();
+
 	/* load modules */
 	obs_load_all_modules();
 	obs_log_loaded_modules();
 	obs_post_load_modules();
 
-	/* init obs graphic things */
-	initVideo();
+
 	blog(LOG_INFO, "Successfully init OBS core");
 	return;
 }
 
-void ObsCoreWrapper::destroyOBS()
+void ObsCoreWrapper::setVideoInfo(uint32_t width, uint32_t height,
+				  uint32_t fpsNumerator,
+				  uint32_t fpsDenominator)
 {
-	obs_shutdown();
-    blog(LOG_INFO, "Number of memory leaks: %ld", bnum_allocs());
-    return;
-}
-
-obs_source_t *ObsCoreWrapper::getSourceByScene(obs_scene_t *scene)
-{
-	/* set the scene as the primary draw source and go */
-	obs_source_t *s = obs_scene_get_source(scene);
-	if (!s) {
-		throw "Couldn't create outputSource from scene";
-	}
-	obs_set_output_source(0, s);
-	return s;
+	ovi.adapter = 0;
+	ovi.base_width = width;
+	ovi.base_height = height;
+	ovi.fps_num = fpsNumerator;
+	ovi.fps_den = fpsDenominator;
+	ovi.graphics_module = DL_D3D11;
+	ovi.output_format = VIDEO_FORMAT_RGBA;
+	ovi.output_width = width;
+	ovi.output_height = height;
 }
 
 void ObsCoreWrapper::sceneItemSetScale(obs_scene_t *scene, obs_source_t *source,

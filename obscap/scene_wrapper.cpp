@@ -1,13 +1,8 @@
 #include "scene_wrapper.hpp"
 
-SceneWrapper::SceneWrapper(const char *name) {
-    obs_scene_t *_scene = obs_scene_create(name);
-	if (!_scene)
+void SceneWrapper::init(const char *name)
+{
+	scene = obs_scene_create(name);
+	if (!scene)
 		throw "Couldn't create scene";
-
-	scene = _scene;
-}
-
-void SceneWrapper::destroy() {
-	obs_scene_release(scene);
 }
