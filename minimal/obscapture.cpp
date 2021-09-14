@@ -3,6 +3,7 @@
 #include <dwmapi.h>
 #include <util/dstr.h>
 #include "media-io/video-frame.h"
+#include <util/platform.h>
 
 #include <Psapi.h>
 #include "plugins/win-capture/obfuscate.h"
@@ -204,7 +205,7 @@ static void get_window_title(struct dstr *name, HWND hwnd)
 }
 
 OBSCapture::OBSCapture(const HWND &target, const HWND &_preview, QObject *parent):QObject(parent),
-    context({0}),display(nullptr),sink(target),from(_preview),scene(nullptr),item(nullptr)
+    context({0}),display(nullptr),scene(nullptr),from(_preview),sink(target),source(nullptr)
 {
     initOBS();
 //    QMetaObject::invokeMethod(this,"initOBS",Qt::QueuedConnection);
@@ -225,22 +226,25 @@ OBSCapture::~OBSCapture()
 
     obs_shutdown();
 
-//    obs_source_release(source);
     blog(LOG_INFO, "Number of memory leaks: %ld", bnum_allocs());
 }
 
 int OBSCapture::ResetVideo(void){
+
+    RECT rc;
+    GetClientRect(from, &rc);
+
 //    struct obs_video_info ovi;
     int ret;
     context.ovi.adapter = 0;
-    context.ovi.base_width = 1080;
-    context.ovi.base_height = 1920;
+    context.ovi.base_width = rc.right;
+    context.ovi.base_height = rc.bottom;
     context.ovi.fps_num = 144000;
     context.ovi.fps_den = 1001;
     context.ovi.graphics_module = DL_D3D11;
     context.ovi.output_format = VIDEO_FORMAT_RGBA;
-    context.ovi.output_width = 720;
-    context.ovi.output_height = 1280;
+    context.ovi.output_width = context.ovi.base_width;
+    context.ovi.output_height = context.ovi.base_height;
 
     ret = obs_reset_video(&context.ovi);
     if (ret != OBS_VIDEO_SUCCESS) {
@@ -276,14 +280,66 @@ static void RenderWindow(void *data, uint32_t cx, uint32_t cy) {
 
 static obs_display_t* CreateDisplay(HWND sink)
 {
-    gs_init_data info = {};
-    info.cx = 1280;
-    info.cy = 720;
+
+    RECT rc;
+    GetClientRect(sink, &rc);
+
+    gs_init_data info = {0,};
+    info.cx = rc.right;
+    info.cy = rc.bottom;
     info.format = GS_RGBA;
     info.zsformat = GS_ZS_NONE;
     info.window.hwnd = sink;
 
     return obs_display_create(&info, 0);
+}
+
+static int GetProgramDataPath(char *path, size_t size, const char *name)
+{
+    return os_get_program_data_path(path, size, name);
+}
+
+static void AddExtraModulePaths()
+{
+    char *plugins_path = getenv("OBS_PLUGINS_PATH");
+    char *plugins_data_path = getenv("OBS_PLUGINS_DATA_PATH");
+    if (plugins_path && plugins_data_path) {
+        std::string data_path_with_module_suffix;
+        data_path_with_module_suffix += plugins_data_path;
+        data_path_with_module_suffix += "/%module%";
+        obs_add_module_path(plugins_path,
+                    data_path_with_module_suffix.c_str());
+    }
+
+    char base_module_dir[512];
+#if defined(_WIN32) || defined(__APPLE__)
+    int ret = GetProgramDataPath(base_module_dir, sizeof(base_module_dir),
+                     "obs-studio/plugins/%module%");
+#else
+    int ret = GetConfigPath(base_module_dir, sizeof(base_module_dir),
+                "obs-studio/plugins/%module%");
+#endif
+
+    if (ret <= 0)
+        return;
+
+    std::string path = base_module_dir;
+#if defined(__APPLE__)
+    obs_add_module_path((path + "/bin").c_str(), (path + "/data").c_str());
+
+    BPtr<char> config_bin =
+        os_get_config_path_ptr("obs-studio/plugins/%module%/bin");
+    BPtr<char> config_data =
+        os_get_config_path_ptr("obs-studio/plugins/%module%/data");
+    obs_add_module_path(config_bin, config_data);
+
+#elif ARCH_BITS == 64
+    obs_add_module_path((path + "/bin/64bit").c_str(),
+                (path + "/data").c_str());
+#else
+    obs_add_module_path((path + "/bin/32bit").c_str(),
+                (path + "/data").c_str());
+#endif
 }
 
 int OBSCapture::initOBS()
@@ -293,13 +349,11 @@ int OBSCapture::initOBS()
         return 1;
     }
 
-    /* load modules */
+    ResetVideo();
+    AddExtraModulePaths();
     obs_load_all_modules();
     obs_log_loaded_modules();
     obs_post_load_modules();
-
-    /* init obs graphic things */
-    ResetVideo();
 
 #ifdef _WIN32
     /* disable aero for old windows */
@@ -312,6 +366,12 @@ int OBSCapture::initOBS()
     return 0;
 }
 
+enum window_capture_method {
+    METHOD_AUTO,
+    METHOD_BITBLT,
+    METHOD_WGC,
+};
+
 int OBSCapture::start()
 {
     source = obs_source_create("window_capture", "window capture source", NULL, nullptr);
@@ -320,17 +380,12 @@ int OBSCapture::start()
         return 1;
     }
 
-    RECT rc;
-    GetClientRect(from, &rc);
-
     struct dstr name = {0};
     struct dstr clazz = {0};
     struct dstr exe = {0};
     char cur_id[255];
 
     if (from) {
-        screenx = rc.right;
-        screeny = rc.bottom;
         get_window_title(&name, from);
         get_window_class(&clazz, from);
         get_window_exe(&exe, from);
@@ -349,6 +404,8 @@ int OBSCapture::start()
 
     obs_data_t *data = obs_data_create();
     obs_data_set_string(data, "window", cur_id);
+    obs_data_set_int(data, "method", METHOD_WGC);
+//    obs_data_set_int(data, "method", METHOD_BITBLT);
     obs_source_update(source, data);
     obs_data_release(data);
 
@@ -358,7 +415,7 @@ int OBSCapture::start()
         return 2;
     }
 
-    item = obs_scene_add(scene, source);
+    obs_scene_add(scene, source);
     obs_set_output_source(0, source);
     display = CreateDisplay(sink);
     obs_display_add_draw_callback(display, RenderWindow, nullptr);

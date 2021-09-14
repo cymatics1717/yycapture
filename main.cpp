@@ -133,11 +133,8 @@ int main(int argc, char *argv[])
     QQuickWindow *preview = static_cast<QQuickWindow*>(engine.rootObjects().first());
     HWND hWnd = HWND(preview->winId());
 
-//    CaptureManager cm(hWnd, getWindowByString("WeChat"), 60000, 1001);
-//    cm.init();
-//    cm.initCapture(getWindowIdByPattern("", "WeChat"));
-//    cm.start();
     OBSCapture cap(hWnd, getWindowByString("WeChat"),&app);
+//    OBSCapture cap(hWnd, getWindowByString("pptx"),&app);
     cap.start();
 
     return app.exec();

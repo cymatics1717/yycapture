@@ -40,19 +40,10 @@ private:
 
     obs_display_t *display;
     obs_scene_t *scene;
-    obs_sceneitem_t *item;
 
     HWND from;
     HWND sink;
-    int stage = -1;
-    obs_source_t *source = NULL;
-//    gs_texrender_t *texrender = NULL;
-//    gs_stagesurf_t *stagesurf = NULL;
-
-    int cx = 800;
-    int cy = 600;
-    int screenx = 800;
-    int screeny = 600;
+    obs_source_t *source;
 };
 
 #endif // OBSCAPTURE_HPP
