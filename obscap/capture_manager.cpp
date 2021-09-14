@@ -10,87 +10,25 @@
  *  fpsDen: fps denominator. e.g.: 1001
  * 
  */
-CaptureManager::CaptureManager(HWND viewHwnd, HWND fromHwnd, uint32_t fpsNum,
-			       uint32_t fpsDen)
+void CaptureManager::init(HWND viewHwnd, HWND fromHwnd, uint32_t fpsNum,
+			  uint32_t fpsDen)
 {
-    this->viewHwnd = viewHwnd;
-    this->fromHwnd = fromHwnd;
-    this->fpsNum = fpsNum;
-    this->fpsDen = fpsDen;
-}
-
-CaptureManager::~CaptureManager()
-{
-    destroy();
-}
-
-void CaptureManager::init() {
 	RECT rc;
-    GetClientRect(viewHwnd, &rc);
-    obsCore = ObsCoreWrapper(rc.right, rc.bottom, fpsNum, fpsDen);
-    obsCore.createOBS();
-    display = createDisplay(viewHwnd, rc.right, rc.bottom);
-    outputScene = createOutputScene("test scene");
-    outputSource = createOutputSourceByScene(outputScene);
-    captureSource = createCaptureSource();
-}
-
-void CaptureManager::destroy() {
-    //outputSource.destroy();
-    //captureSource.destroy();
-    //outputScene.destroy();
-    //display.destroy();
-	obsCore.destroyOBS();
-}
-
-
-
-/**
- * create display for output and set the output render callback
- * Params:
- *  hwnd: the view window handle
- *  width: view window widht
- *  height: view window height
- */
-DisplayWrapper CaptureManager::createDisplay(HWND hwnd, uint32_t width,
-					     uint32_t height)
-{
-	DisplayWrapper displayWrapper = DisplayWrapper(hwnd, width, height);
-	return displayWrapper;
-}
-
-/**
- * create window capture obs source
- * 
- */
-CaptureSourceWrapper CaptureManager::createCaptureSource()
-{
-	CaptureSourceWrapper captureSource = CaptureSourceWrapper();
+	GetClientRect(viewHwnd, &rc);
+	this->viewHwnd = &viewHwnd;
+	this->fromHwnd = &fromHwnd;
+	this->fpsNum = &fpsNum;
+	this->fpsDen = &fpsDen;
+	/* init obs core */
+	obsCore.setVideoInfo(rc.right, rc.bottom, fpsNum, fpsDen);
+	obsCore.createOBS();
+	/* config display */
+	display.config(viewHwnd, rc.right, rc.bottom);
+	/* init output source scene */
+	outputScene.init("test scene");
+	/* init window capture source */
 	captureSource.init();
-	return captureSource;
-}
-
-/**
- * create view output obs scene
- * Params:
- *  name: the capture window exe name to distinguish
- * 
- */
-SceneWrapper CaptureManager::createOutputScene(const char *name)
-{
-	SceneWrapper sceneWrapper = SceneWrapper(name);
-	return sceneWrapper;
-}
-
-/**
- * create view output window obs source by output scene
- * 
- */
-SourceWrapper CaptureManager::createOutputSourceByScene(SceneWrapper scene)
-{
-	SourceWrapper sourceWrapper = SourceWrapper();
-	sourceWrapper.setSource(obsCore.getSourceByScene(scene.getScene()));
-	return sourceWrapper;
+	obs_set_output_source(0, captureSource);
 }
 
 /**
@@ -101,14 +39,13 @@ SourceWrapper CaptureManager::createOutputSourceByScene(SceneWrapper scene)
  *  fromHwnd: capture window handle
  * 
  */
-void CaptureManager::AddSceneItems(SceneWrapper scene, CaptureSourceWrapper source,
-				   HWND fromHwnd)
+void CaptureManager::AddSceneItems()
 {
 	uint32_t cx = 0;
 	uint32_t cy = 0;
 	display.getObsDisplaySize(&cx, &cy);
 	RECT rc;
-	GetClientRect(fromHwnd, &rc);
+	GetClientRect(*fromHwnd, &rc);
 	uint32_t width = rc.right;
 	uint32_t height = rc.bottom;
 	float scale_x = 1.0f;
@@ -121,14 +58,16 @@ void CaptureManager::AddSceneItems(SceneWrapper scene, CaptureSourceWrapper sour
 		scale_y = float(cy) / width;
 	}
 
-	obsCore.sceneItemSetScale(scene.getScene(), source.getSource(), scale_x, scale_y);
+	float s = scale_x > scale_y ? scale_x : scale_y;
+	obs_scene_add(outputScene, captureSource);
+	obsCore.sceneItemSetScale(outputScene, captureSource, s, s);
 	return;
 }
 
 void CaptureManager::initCapture(const char *curId)
 {
-    AddSceneItems(outputScene, captureSource, fromHwnd);
-    captureSource.changeCaptureSource(curId);
+	AddSceneItems();
+	captureSource.changeCaptureSource(curId);
 	return;
 }
 
@@ -138,6 +77,16 @@ void CaptureManager::initCapture(const char *curId)
  */
 void CaptureManager::start()
 {
-    display.setDisplayRenderCallback(RenderWindow);
+	display.setDisplayRenderCallback(RenderWindow);
+	return;
+}
+
+void CaptureManager::destroy()
+{
+	obs_display_destroy(display);
+	obs_scene_release(outputScene);
+	obs_source_release(captureSource);
+	obs_set_output_source(0, nullptr);
+	obs_shutdown();
 	return;
 }

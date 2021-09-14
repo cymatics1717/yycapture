@@ -1,12 +1,11 @@
 #include "base.hpp"
 
 class CaptureSourceWrapper {
-	obs_source_t *source = NULL;
+	obs_source_t *source;
 
 public:
 	void changeCaptureSource(const char *);
-	obs_source_t *getSource() { return source; }
-	void setSource(obs_source_t *source) { this->source = source; }
+	inline operator obs_source_t *() { return source; }
+	//void setSource(obs_source_t *source) { source = source; }
 	void init();
-	void destroy();
 };

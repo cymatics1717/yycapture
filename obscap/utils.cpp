@@ -216,19 +216,16 @@ HWND find_window(const char *clazz, const char *title)
 	return best_window;
 }
 
-map<const char *, HWND> enumerate_windows_list()
+map<string, HWND> enumerate_windows_list()
 {
 	HWND parent;
 	bool use_findwindowex = false;
-	map<const char *, HWND> data;
+	map<string, HWND> data;
 	HWND window = first_window(&parent, &use_findwindowex);
 	while (window) {
-		char *id;
-		const char *temp = getWindowIdByHwnd(window);
-		if (temp) {
-			id = new char[255]();
-			strcpy_s(id, 255, temp);
-			data.insert(std::make_pair(id, window));
+		string temp = getWindowIdByHwnd(window);
+		if (!temp.empty()) {
+			data.insert(std::make_pair(temp, window));
 		}
 		
 		window = next_window(window, &parent, use_findwindowex);
@@ -258,20 +255,22 @@ static bool check_window_valid(HWND window)
 	return true;
 }
 
-char wName[255];
-const char * getWindowExeNameByHwnd(HWND hwnd)
+string getWindowExeNameByHwnd(HWND hwnd)
 {
 	struct dstr exe = {0};
+	string name = string();
 	get_window_exe(&exe, hwnd);
 	if (exe.array) {
-		strcpy_s(wName, sizeof(wName), exe.array);
-		return wName;
+		name.append(exe.array);
+		return name;
 	}
 
-	return "default_name";
+	name.append("default_name");
+	dstr_free(&exe);
+	return name;
 }
 
-const char *getWindowIdByPattern(const char *classPat,
+string getWindowIdByPattern(const char *classPat,
 					const char *namePat)
 {
 	HWND found = find_window(classPat, namePat);
@@ -282,31 +281,32 @@ const char *getWindowIdByPattern(const char *classPat,
 	     "Cannot find window with class pattern: %s, name pattern: %s\n",
 	     classPat, namePat);
 
-	return NULL;
+	return string();
 }
 
-char wId[255];
-static const char *getWindowIdByHwnd(HWND hwnd)
+static string getWindowIdByHwnd(HWND hwnd)
 {
+	string id = string();
 	if (hwnd) {
 		struct dstr name = {0};
 		struct dstr clazz = {0};
 		struct dstr exe = {0};
+
 		get_window_title(&name, hwnd);
 		get_window_class(&clazz, hwnd);
 		get_window_exe(&exe, hwnd);
 		if (name.array && clazz.array && exe.array) {
-			strcpy_s(wId, sizeof(wId), name.array);
-			strcat_s(wId, sizeof(wId), ":");
-			strcat_s(wId, sizeof(wId), clazz.array);
-			strcat_s(wId, sizeof(wId), ":");
-			strcat_s(wId, sizeof(wId), exe.array);
-			return wId;
+			id.append(name.array);
+			id.append(":");
+			id.append(clazz.array);
+			id.append(":");
+			id.append(exe.array);
 		}
+		dstr_free(&name);
+		dstr_free(&clazz);
+		dstr_free(&exe);
 	}
-
-	blog(LOG_ERROR, "hwnd is invalid\n");
-	return NULL;
+	return id;
 }
 
 uint32_t GetWindowsVersion()

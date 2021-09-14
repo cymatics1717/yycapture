@@ -29,8 +29,6 @@ set(PROJECT_SOURCES
         obscap/obs_core_wrapper.hpp
         obscap/scene_wrapper.cpp
         obscap/scene_wrapper.hpp
-        obscap/source_wrapper.cpp
-        obscap/source_wrapper.hpp
         obscap/utils.cpp
         obscap/utils.hpp
 

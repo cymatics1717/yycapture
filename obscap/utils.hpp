@@ -53,16 +53,16 @@ static int window_rating(HWND window, const char *clazz, const char *title);
 
 HWND find_window(const char *clazz, const char *title);
 
-map<const char *, HWND> enumerate_windows_list();
+map<string, HWND> enumerate_windows_list();
 
 static bool check_window_valid(HWND window);
 
-const char * getWindowExeNameByHwnd(HWND hwnd);
+string getWindowExeNameByHwnd(HWND hwnd);
 
-const char * getWindowIdByPattern(const char *,
+string getWindowIdByPattern(const char *,
 					const char *);
 
-static const char * getWindowIdByHwnd(HWND hwnd);
+static string getWindowIdByHwnd(HWND hwnd);
 uint32_t GetWindowsVersion();
 
 void SetAeroEnabled(bool enable);
