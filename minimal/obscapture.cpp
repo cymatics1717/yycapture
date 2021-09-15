@@ -415,7 +415,42 @@ int OBSCapture::start()
         return 2;
     }
 
-    obs_scene_add(scene, source);
+//    obs_scene_add(scene, source);
+    auto item = obs_scene_add(scene, source);
+    obs_sceneitem_selected(item);
+    {
+        uint32_t cx = 0;
+        uint32_t cy = 0;
+        obs_display_size(display,&cx, &cy);
+        RECT rc;
+        GetClientRect(from, &rc);
+        uint32_t width = rc.right;
+        uint32_t height = rc.bottom;
+        float scale_x = 1.0f;
+        float scale_y = 1.0f;
+        if (width > cx) {
+            scale_x = float(cx) / width;
+        }
+
+        if (height > cy) {
+            scale_y = float(cy) / width;
+        }
+
+        float s = scale_x > scale_y ? scale_x : scale_y;
+        struct vec2 scale;
+        vec2_set(&scale, s, s);
+        obs_sceneitem_set_scale(item, &scale);
+
+//        vec2 pos,offset;
+//        offset.x = 500;
+//        offset.y = 500;
+//        obs_sceneitem_get_pos(item, &pos);
+//        vec2_add(&pos, &pos, &offset);
+//        obs_sceneitem_set_pos(item, &pos);
+
+    }
+
+
     obs_set_output_source(0, source);
     display = CreateDisplay(sink);
     obs_display_add_draw_callback(display, RenderWindow, nullptr);
