@@ -1,6 +1,5 @@
 #include "capture_manager.hpp"
 
-
 /**
  * init capture manager
  * Params:
@@ -28,7 +27,6 @@ void CaptureManager::init(HWND viewHwnd, HWND fromHwnd, uint32_t fpsNum,
 	outputScene.init("test scene");
 	/* init window capture source */
 	captureSource.init();
-	obs_set_output_source(0, captureSource);
 }
 
 /**
@@ -59,16 +57,15 @@ void CaptureManager::AddSceneItems()
 	}
 
 	float s = scale_x > scale_y ? scale_x : scale_y;
-	obs_scene_add(outputScene, captureSource);
 	obsCore.sceneItemSetScale(outputScene, captureSource, s, s);
-	return;
+
 }
 
 void CaptureManager::initCapture(const char *curId)
 {
-	AddSceneItems();
 	captureSource.changeCaptureSource(curId);
-	return;
+	AddSceneItems();
+	obs_set_output_source(0, outputScene.getSourceByScene());
 }
 
 /**
@@ -78,7 +75,6 @@ void CaptureManager::initCapture(const char *curId)
 void CaptureManager::start()
 {
 	display.setDisplayRenderCallback(RenderWindow);
-	return;
 }
 
 void CaptureManager::destroy()
@@ -88,5 +84,4 @@ void CaptureManager::destroy()
 	obs_source_release(captureSource);
 	obs_set_output_source(0, nullptr);
 	obs_shutdown();
-	return;
 }

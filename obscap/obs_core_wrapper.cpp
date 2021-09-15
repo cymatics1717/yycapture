@@ -23,7 +23,6 @@ void ObsCoreWrapper::initVideo(void)
 			ret = obs_reset_video(&ovi);
 		}
 	}
-	return;
 }
 
 void ObsCoreWrapper::createOBS()
@@ -41,7 +40,6 @@ void ObsCoreWrapper::createOBS()
 
 
 	blog(LOG_INFO, "Successfully init OBS core");
-	return;
 }
 
 void ObsCoreWrapper::setVideoInfo(uint32_t width, uint32_t height,
