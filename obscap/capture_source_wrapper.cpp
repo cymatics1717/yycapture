@@ -16,5 +16,4 @@ void CaptureSourceWrapper::changeCaptureSource(const char *Id)
 	obs_data_set_string(data, setting, Id);
 	obs_source_update(source, data);
 	obs_data_release(data);
-	return;
 }
