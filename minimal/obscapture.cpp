@@ -287,25 +287,23 @@ int OBSCapture::addGameSource(HWND from){
     struct dstr name = {0};
     struct dstr clazz = {0};
     struct dstr exe = {0};
-    char cur_id[255];
+
+    QString cur_id;
 
     if (from) {
         get_window_title(&name, from);
         get_window_class(&clazz, from);
         get_window_exe(&exe, from);
         if (name.array && clazz.array && exe.array) {
-            strcpy_s(cur_id, sizeof(cur_id), name.array);
-            strcat_s(cur_id, sizeof(cur_id), ":");
-            strcat_s(cur_id, sizeof(cur_id), clazz.array);
-            strcat_s(cur_id, sizeof(cur_id), ":");
-            strcat_s(cur_id, sizeof(cur_id), exe.array);
+            cur_id = QString("%1:%2:%3").arg(name.array,clazz.array,exe.array);
+//            snprintf(cur_id,size_t(cur_id),"%s:%s:%s",name.array,clazz.array,exe.array);
         }
     }
     dstr_free(&name);
     dstr_free(&clazz);
     dstr_free(&exe);
 
-    obs_source_t *source = obs_source_create("game_capture", cur_id, NULL, nullptr);
+    obs_source_t *source = obs_source_create("game_capture", qPrintable(QString("game"+cur_id)), NULL, nullptr);
     if (!source){
         blog(LOG_ERROR,"Couldn't create random test source");
         return 1;
@@ -314,7 +312,7 @@ int OBSCapture::addGameSource(HWND from){
     sources[from] = source;
 
     obs_data_t *data = obs_data_create();
-    obs_data_set_string(data, "window", cur_id);
+    obs_data_set_string(data, "window", qPrintable(cur_id));
     obs_data_set_string(data, "capture_mode", "window");
 //    obs_data_set_int(data, "priority", 2);
 //    obs_data_set_int(data, "hook_rate", 1);
@@ -349,34 +347,30 @@ int OBSCapture::addWindowSource(HWND from)
     struct dstr name = {0};
     struct dstr clazz = {0};
     struct dstr exe = {0};
-    char cur_id[255];
-
+    QString cur_id;
     if (from) {
         get_window_title(&name, from);
         get_window_class(&clazz, from);
         get_window_exe(&exe, from);
         if (name.array && clazz.array && exe.array) {
-            strcpy_s(cur_id, sizeof(cur_id), name.array);
-            strcat_s(cur_id, sizeof(cur_id), ":");
-            strcat_s(cur_id, sizeof(cur_id), clazz.array);
-            strcat_s(cur_id, sizeof(cur_id), ":");
-            strcat_s(cur_id, sizeof(cur_id), exe.array);
+            cur_id = QString("%1:%2:%3").arg(name.array,clazz.array,exe.array);
         }
     }
     dstr_free(&name);
     dstr_free(&clazz);
     dstr_free(&exe);
 
-    obs_source_t *source = obs_source_create("window_capture", "window capture source", NULL, nullptr);
+
+    obs_source_t *source = obs_source_create("window_capture", qPrintable(QString("window"+cur_id)), NULL, nullptr);
     if (!source){
-        blog(LOG_ERROR,"Couldn't create random test source %s",cur_id);
+        blog(LOG_ERROR,"Couldn't create random test source %s",qPrintable(cur_id));
         return 1;
     }
 
     sources[from] = source;
 
     obs_data_t *data = obs_data_create();
-    obs_data_set_string(data, "window", cur_id);
+    obs_data_set_string(data, "window", qPrintable(cur_id));
 //    obs_data_set_int(data, "method", METHOD_WGC);
 //    obs_data_set_int(data, "method", METHOD_BITBLT);
     obs_source_update(source, data);

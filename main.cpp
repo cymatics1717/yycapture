@@ -129,8 +129,8 @@ int main(int argc, char *argv[])
                 std::cout << GetCurrentProcessId() << ":" << GetCurrentThreadId()
                     << "---found " << exename << ": " << v.second.pid
                     << ": "<< v.second.winID << std::endl;
-                cap.addGameSource(v.second.winID);
 //                cap.addWindowSource(v.second.winID);
+                cap.addGameSource(v.second.winID);
                 //break;
             }
         }
