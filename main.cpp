@@ -2,8 +2,8 @@
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
 #include <QScreen>
+#include <QQmlContext>
 
-#include "capture_manager.hpp"
 #include "obscapture.hpp"
 
 #include <unordered_map>
@@ -59,8 +59,8 @@ static BOOL CALLBACK EnumWindowsProc(HWND hWnd,LPARAM lParam)
             DWORD hThreadID = GetWindowThreadProcessId(hWnd, &hProcess);
             char filename[MAX_PATH]={0};
             HANDLE processHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, hProcess);
-            if (processHandle != NULL) {
-                GetModuleFileNameEx(processHandle, NULL, filename, MAX_PATH);
+//            if (processHandle != NULL) {
+//                GetModuleFileNameEx(processHandle, NULL, filename, MAX_PATH);
 
 //                HMODULE hMods[1024];
 //                DWORD cbNeeded;
@@ -78,8 +78,8 @@ static BOOL CALLBACK EnumWindowsProc(HWND hWnd,LPARAM lParam)
 //                        }
 //                    }
 //                }
-                CloseHandle(processHandle);
-            }
+//                CloseHandle(processHandle);
+//            }
 
             char tmp[MAX_PATH];
             snprintf(tmp,MAX_PATH,"[%p.%08lX.%08lX] %s(%s)",hWnd,hProcess,hThreadID,buffer,filename);
@@ -91,29 +91,9 @@ static BOOL CALLBACK EnumWindowsProc(HWND hWnd,LPARAM lParam)
     return true;
 }
 
-
-static HWND getWindowByString(const std::string &exename)
-{
-    EnumWindows(EnumWindowsProc, LPARAM(&pool));
-    HWND src = 0;
-    for (auto v : pool) {
-        std::cout << v.first << std::endl;
-        if (v.first.find(exename) != std::string::npos) {
-            src = v.second.winID;
-            std::cout << GetCurrentProcessId() << ":" << GetCurrentThreadId()
-                << "---found " << exename << ": " << v.second.pid << std::endl;
-            //break;
-        }
-    }
-    //HMONITOR target = ::MonitorFromPoint({ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
-    return src;
-}
-
-
 int main(int argc, char *argv[])
 {
     base_set_log_handler(do_log, nullptr);
-
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
@@ -133,8 +113,28 @@ int main(int argc, char *argv[])
     QQuickWindow *preview = static_cast<QQuickWindow*>(engine.rootObjects().first());
     HWND hWnd = HWND(preview->winId());
 
-    OBSCapture cap(hWnd, getWindowByString("WeChat"),&app);
-//    OBSCapture cap(hWnd, getWindowByString("pptx"),&app);
+//    OBSCapture cap(hWnd, getWindowByString("WeChat"),&app);
+    OBSCapture cap(hWnd,&app);
+////    cap.start();
+//    cap.startGame();
+//    engine.rootContext()->setContextProperty("backend",&cap);
+
+    std::string exename = "pptx";
+//    std::string exename = "WeChat";
+    {
+        EnumWindows(EnumWindowsProc, LPARAM(&pool));
+        for (auto v : pool) {
+            std::cout << v.first << std::endl;
+            if (v.first.find(exename) != std::string::npos) {
+                std::cout << GetCurrentProcessId() << ":" << GetCurrentThreadId()
+                    << "---found " << exename << ": " << v.second.pid
+                    << ": "<< v.second.winID << std::endl;
+                cap.addGameSource(v.second.winID);
+//                cap.addWindowSource(v.second.winID);
+                //break;
+            }
+        }
+    }
     cap.start();
 
     return app.exec();

@@ -4,12 +4,17 @@
 #include <util/dstr.h>
 #include "media-io/video-frame.h"
 #include <util/platform.h>
+#include <d3d11.h>
+#include <dxgi1_6.h>
+#include <wrl/wrappers/corewrappers.h>
+#include <wrl/client.h>
 
 #include <Psapi.h>
 #include "plugins/win-capture/obfuscate.h"
 
 #define DL_OPENGL "libobs-opengl.dll"
 #define DL_D3D11 "libobs-d3d11.dll"
+#include <QDateTime>
 #include <QDateTime>
 #include <QDebug>
 #include <QMetaObject>
@@ -55,47 +60,6 @@ static uint32_t GetWindowsVersion()
     return ver;
 }
 
-static HMODULE kernel32(void)
-{
-    static HMODULE kernel32_handle = NULL;
-    if (!kernel32_handle)
-        kernel32_handle = GetModuleHandleA("kernel32");
-    return kernel32_handle;
-}
-
-static inline HANDLE open_process(DWORD desired_access, bool inherit_handle, DWORD process_id)
-{
-    typedef HANDLE(WINAPI * PFN_OpenProcess)(DWORD, BOOL, DWORD);
-    static PFN_OpenProcess open_process_proc = NULL;
-    if (!open_process_proc)
-        open_process_proc = (PFN_OpenProcess)get_obfuscated_func(
-            kernel32(), "B}caZyah`~q", 0x2D5BEBAF6DDULL);
-
-    return open_process_proc(desired_access, inherit_handle, process_id);
-}
-
-static bool check_window_valid(HWND window)
-{
-    DWORD styles, ex_styles;
-    RECT rect;
-
-    if (!IsWindowVisible(window) || IsIconic(window))
-        return false;
-
-    GetClientRect(window, &rect);
-    styles = (DWORD)GetWindowLongPtr(window, GWL_STYLE);
-    ex_styles = (DWORD)GetWindowLongPtr(window, GWL_EXSTYLE);
-
-    if (ex_styles & WS_EX_TOOLWINDOW)
-        return false;
-    if (styles & WS_CHILD)
-        return false;
-    if (rect.bottom == 0 || rect.right == 0)
-        return false;
-
-    return true;
-}
-
 static bool get_window_exe(struct dstr *name, HWND window)
 {
     wchar_t wname[MAX_PATH];
@@ -109,7 +73,7 @@ static bool get_window_exe(struct dstr *name, HWND window)
     if (id == GetCurrentProcessId())
         return false;
 
-    process = open_process(PROCESS_QUERY_LIMITED_INFORMATION, false, id);
+    process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, id);
     if (!process)
         goto fail;
 
@@ -131,54 +95,6 @@ fail:
     dstr_free(&temp);
     CloseHandle(process);
     return true;
-}
-
-static HWND next_window(HWND window, HWND *parent, bool use_findwindowex)
-{
-    if (*parent) {
-        window = *parent;
-        *parent = NULL;
-    }
-
-    while (true) {
-        if (use_findwindowex)
-            window = FindWindowEx(GetDesktopWindow(), window, NULL,
-                          NULL);
-        else
-            window = GetNextWindow(window, GW_HWNDNEXT);
-
-        if (!window || check_window_valid(window))
-            break;
-    }
-
-    return window;
-}
-
-static HWND first_window(HWND *parent, bool *use_findwindowex)
-{
-    HWND window = FindWindowEx(GetDesktopWindow(), NULL, NULL, NULL);
-
-    if (!window) {
-        *use_findwindowex = false;
-        window = GetWindow(GetDesktopWindow(), GW_CHILD);
-    } else {
-        *use_findwindowex = true;
-    }
-
-    *parent = NULL;
-    if (!check_window_valid(window)) {
-        window = next_window(window, parent, *use_findwindowex);
-
-        if (!window && *use_findwindowex) {
-            *use_findwindowex = false;
-
-            window = GetWindow(GetDesktopWindow(), GW_CHILD);
-            if (!check_window_valid(window))
-                window = next_window(window, parent, *use_findwindowex);
-        }
-    }
-
-    return window;
 }
 
 static void get_window_class(struct dstr *clazz, HWND hwnd)
@@ -204,8 +120,8 @@ static void get_window_title(struct dstr *name, HWND hwnd)
     free(temp);
 }
 
-OBSCapture::OBSCapture(const HWND &target, const HWND &_preview, QObject *parent):QObject(parent),
-    context({0}),display(nullptr),scene(nullptr),from(_preview),sink(target),source(nullptr)
+OBSCapture::OBSCapture(const HWND &target, QObject *parent):
+        QObject(parent),fps(60),ovi({0}),display(nullptr),scene(nullptr),sink(target)
 {
     initOBS();
 //    QMetaObject::invokeMethod(this,"initOBS",Qt::QueuedConnection);
@@ -213,15 +129,18 @@ OBSCapture::OBSCapture(const HWND &target, const HWND &_preview, QObject *parent
 
 OBSCapture::~OBSCapture()
 {
+    qDebug() << obs_get_version_string();
+
     if(display){
          obs_display_destroy(display);
     }
     if(scene){
          obs_scene_release(scene);
     }
-    if(source){
-         obs_source_release(source);
+    for(auto v:sources){
+         obs_source_release(v.second);
     }
+
     obs_set_output_source(0, nullptr);
 
     obs_shutdown();
@@ -229,24 +148,24 @@ OBSCapture::~OBSCapture()
     blog(LOG_INFO, "Number of memory leaks: %ld", bnum_allocs());
 }
 
-int OBSCapture::ResetVideo(void){
+int OBSCapture::resetVideo(int fs){
 
     RECT rc;
-    GetClientRect(from, &rc);
+    GetClientRect(sink, &rc);
 
 //    struct obs_video_info ovi;
     int ret;
-    context.ovi.adapter = 0;
-    context.ovi.base_width = rc.right;
-    context.ovi.base_height = rc.bottom;
-    context.ovi.fps_num = 144000;
-    context.ovi.fps_den = 1001;
-    context.ovi.graphics_module = DL_D3D11;
-    context.ovi.output_format = VIDEO_FORMAT_RGBA;
-    context.ovi.output_width = context.ovi.base_width;
-    context.ovi.output_height = context.ovi.base_height;
+    ovi.adapter = 0;
+    ovi.base_width = rc.right;
+    ovi.base_height = rc.bottom;
+    ovi.fps_num = fs;
+    ovi.fps_den = 1;
+    ovi.graphics_module = DL_D3D11;
+    ovi.output_format = VIDEO_FORMAT_RGBA;
+    ovi.output_width = ovi.base_width;
+    ovi.output_height = ovi.base_height;
 
-    ret = obs_reset_video(&context.ovi);
+    ret = obs_reset_video(&ovi);
     if (ret != OBS_VIDEO_SUCCESS) {
         if (ret == OBS_VIDEO_CURRENTLY_ACTIVE) {
             blog(LOG_WARNING, "Tried to reset when "
@@ -255,14 +174,14 @@ int OBSCapture::ResetVideo(void){
         }
 
         /* Try OpenGL if DirectX fails on windows */
-        if (strcmp(context.ovi.graphics_module, DL_OPENGL) != 0) {
+        if (strcmp(ovi.graphics_module, DL_OPENGL) != 0) {
             blog(LOG_WARNING,
                  "Failed to initialize obs video (%d) "
                  "with graphics_module='%s', retrying "
                  "with graphics_module='%s'",
-                 ret, context.ovi.graphics_module, DL_OPENGL);
-            context.ovi.graphics_module = DL_OPENGL;
-            ret = obs_reset_video(&context.ovi);
+                 ret, ovi.graphics_module, DL_OPENGL);
+            ovi.graphics_module = DL_OPENGL;
+            ret = obs_reset_video(&ovi);
         }
     }
 
@@ -276,6 +195,38 @@ static void RenderWindow(void *data, uint32_t cx, uint32_t cy) {
     UNUSED_PARAMETER(data);
     UNUSED_PARAMETER(cx);
     UNUSED_PARAMETER(cy);
+}
+
+static void RenderWindowCopy(void *data, uint32_t cx, uint32_t cy) {
+    OBSCapture *that = static_cast<OBSCapture *>(data);
+    blog(LOG_DEBUG,"%d#################%d,%d,%s",
+         __LINE__,cx,cy,QDateTime::currentDateTime().toString("hh-mm-ss.zzz").toStdString().c_str());
+
+    obs_enter_graphics();
+
+    obs_render_main_texture();
+
+    if(0){
+        gs_texture_t * tex = obs_get_main_texture();
+    //    gs_texture_2d *tex2d = static_cast<gs_texture_2d *>(tex);
+
+        using Microsoft::WRL::ComPtr;
+
+        ID3D11Device *const d3d_device = (ID3D11Device *)gs_get_device_obj();
+        ComPtr<ID3D11DeviceContext> context;
+        d3d_device->GetImmediateContext(&context);
+
+        ComPtr<ID3D11Texture2D> tex2d = (ID3D11Texture2D *)gs_texture_get_obj(tex);
+        ComPtr<ID3D11Texture2D> incoming = nullptr;
+
+        D3D11_TEXTURE2D_DESC desc;
+        tex2d->GetDesc(&desc);
+        desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+        HRESULT hr = d3d_device->CreateTexture2D(&desc, NULL, incoming.GetAddressOf());;
+        context->CopyResource(incoming.Get(),tex2d.Get());
+    }
+
+    obs_leave_graphics();
 }
 
 static obs_display_t* CreateDisplay(HWND sink)
@@ -299,49 +250,6 @@ static int GetProgramDataPath(char *path, size_t size, const char *name)
     return os_get_program_data_path(path, size, name);
 }
 
-static void AddExtraModulePaths()
-{
-    char *plugins_path = getenv("OBS_PLUGINS_PATH");
-    char *plugins_data_path = getenv("OBS_PLUGINS_DATA_PATH");
-    if (plugins_path && plugins_data_path) {
-        std::string data_path_with_module_suffix;
-        data_path_with_module_suffix += plugins_data_path;
-        data_path_with_module_suffix += "/%module%";
-        obs_add_module_path(plugins_path,
-                    data_path_with_module_suffix.c_str());
-    }
-
-    char base_module_dir[512];
-#if defined(_WIN32) || defined(__APPLE__)
-    int ret = GetProgramDataPath(base_module_dir, sizeof(base_module_dir),
-                     "obs-studio/plugins/%module%");
-#else
-    int ret = GetConfigPath(base_module_dir, sizeof(base_module_dir),
-                "obs-studio/plugins/%module%");
-#endif
-
-    if (ret <= 0)
-        return;
-
-    std::string path = base_module_dir;
-#if defined(__APPLE__)
-    obs_add_module_path((path + "/bin").c_str(), (path + "/data").c_str());
-
-    BPtr<char> config_bin =
-        os_get_config_path_ptr("obs-studio/plugins/%module%/bin");
-    BPtr<char> config_data =
-        os_get_config_path_ptr("obs-studio/plugins/%module%/data");
-    obs_add_module_path(config_bin, config_data);
-
-#elif ARCH_BITS == 64
-    obs_add_module_path((path + "/bin/64bit").c_str(),
-                (path + "/data").c_str());
-#else
-    obs_add_module_path((path + "/bin/32bit").c_str(),
-                (path + "/data").c_str());
-#endif
-}
-
 int OBSCapture::initOBS()
 {
     if (!obs_startup("en-US", nullptr, nullptr)){
@@ -349,8 +257,7 @@ int OBSCapture::initOBS()
         return 1;
     }
 
-    ResetVideo();
-    AddExtraModulePaths();
+    resetVideo();
     obs_load_all_modules();
     obs_log_loaded_modules();
     obs_post_load_modules();
@@ -372,13 +279,10 @@ enum window_capture_method {
     METHOD_WGC,
 };
 
-int OBSCapture::start()
-{
-    source = obs_source_create("window_capture", "window capture source", NULL, nullptr);
-    if (!source){
-        blog(LOG_ERROR,"Couldn't create random test source");
-        return 1;
-    }
+int OBSCapture::addGameSource(HWND from){
+
+    static int cnt =0;
+    cnt++;
 
     struct dstr name = {0};
     struct dstr clazz = {0};
@@ -401,58 +305,112 @@ int OBSCapture::start()
     dstr_free(&clazz);
     dstr_free(&exe);
 
+    obs_source_t *source = obs_source_create("game_capture", cur_id, NULL, nullptr);
+    if (!source){
+        blog(LOG_ERROR,"Couldn't create random test source");
+        return 1;
+    }
+
+    sources[from] = source;
 
     obs_data_t *data = obs_data_create();
     obs_data_set_string(data, "window", cur_id);
-    obs_data_set_int(data, "method", METHOD_WGC);
+    obs_data_set_string(data, "capture_mode", "window");
+//    obs_data_set_int(data, "priority", 2);
+//    obs_data_set_int(data, "hook_rate", 1);
+//    obs_data_set_bool(data, "capture_cursor", true);
+//    obs_data_set_bool(data, "anti_cheat_hook", true);
+//    obs_data_set_bool(data, "allow_transparency", false);
+//    obs_data_set_bool(data, "capture_overlays", false);
+//    obs_data_set_bool(data, "limit_framerate", false);
+//    obs_data_set_bool(data, "sli_compatibility", false);
 //    obs_data_set_int(data, "method", METHOD_BITBLT);
     obs_source_update(source, data);
     obs_data_release(data);
 
+    obs_sceneitem_t *item = obs_scene_add(scene, source);
+    {
+        obs_sceneitem_selected(item);
+        vec2 pos,offset{{200,200}};
+        obs_sceneitem_get_pos(item, &pos);
+        for(int i=0;i<cnt;++i){
+            vec2_add(&pos, &pos, &offset);
+        }
+        obs_sceneitem_set_pos(item, &pos);
+        obs_sceneitem_set_rot(item,60);
+    }
+    obs_set_output_source(0, source);
+
+    return 0;
+}
+
+int OBSCapture::addWindowSource(HWND from)
+{
+    struct dstr name = {0};
+    struct dstr clazz = {0};
+    struct dstr exe = {0};
+    char cur_id[255];
+
+    if (from) {
+        get_window_title(&name, from);
+        get_window_class(&clazz, from);
+        get_window_exe(&exe, from);
+        if (name.array && clazz.array && exe.array) {
+            strcpy_s(cur_id, sizeof(cur_id), name.array);
+            strcat_s(cur_id, sizeof(cur_id), ":");
+            strcat_s(cur_id, sizeof(cur_id), clazz.array);
+            strcat_s(cur_id, sizeof(cur_id), ":");
+            strcat_s(cur_id, sizeof(cur_id), exe.array);
+        }
+    }
+    dstr_free(&name);
+    dstr_free(&clazz);
+    dstr_free(&exe);
+
+    obs_source_t *source = obs_source_create("window_capture", "window capture source", NULL, nullptr);
+    if (!source){
+        blog(LOG_ERROR,"Couldn't create random test source %s",cur_id);
+        return 1;
+    }
+
+    sources[from] = source;
+
+    obs_data_t *data = obs_data_create();
+    obs_data_set_string(data, "window", cur_id);
+//    obs_data_set_int(data, "method", METHOD_WGC);
+//    obs_data_set_int(data, "method", METHOD_BITBLT);
+    obs_source_update(source, data);
+    obs_data_release(data);
+
+    static int cnt =0;
+    cnt++;
+    obs_sceneitem_t *item = obs_scene_add(scene, source);
+//    {
+//        obs_sceneitem_selected(item);
+//        vec2 pos,offset{{200,200}};
+//        obs_sceneitem_get_pos(item, &pos);
+//        for(int i=0;i<cnt;++i){
+//            vec2_add(&pos, &pos, &offset);
+//        }
+//        obs_sceneitem_set_pos(item, &pos);
+//        obs_sceneitem_set_rot(item,60);
+//    }
+    obs_set_output_source(0, source);
+//obs_get_output_flags("");
+    return 0;
+}
+
+int OBSCapture::start()
+{
     scene = obs_scene_create("test scene");
     if (!scene){
         blog(LOG_ERROR,"Couldn't create scene");
         return 2;
     }
+//    obs_set_output_source(0, nullptr);
 
-//    obs_scene_add(scene, source);
-    auto item = obs_scene_add(scene, source);
-    obs_sceneitem_selected(item);
-    {
-        uint32_t cx = 0;
-        uint32_t cy = 0;
-        obs_display_size(display,&cx, &cy);
-        RECT rc;
-        GetClientRect(from, &rc);
-        uint32_t width = rc.right;
-        uint32_t height = rc.bottom;
-        float scale_x = 1.0f;
-        float scale_y = 1.0f;
-        if (width > cx) {
-            scale_x = float(cx) / width;
-        }
-
-        if (height > cy) {
-            scale_y = float(cy) / width;
-        }
-
-        float s = scale_x > scale_y ? scale_x : scale_y;
-        struct vec2 scale;
-        vec2_set(&scale, s, s);
-        obs_sceneitem_set_scale(item, &scale);
-
-//        vec2 pos,offset;
-//        offset.x = 500;
-//        offset.y = 500;
-//        obs_sceneitem_get_pos(item, &pos);
-//        vec2_add(&pos, &pos, &offset);
-//        obs_sceneitem_set_pos(item, &pos);
-
-    }
-
-
-    obs_set_output_source(0, source);
     display = CreateDisplay(sink);
     obs_display_add_draw_callback(display, RenderWindow, nullptr);
+//    obs_display_add_draw_callback(display, RenderWindowCopy, this);
     return 0;
 }

@@ -3,7 +3,7 @@ import QtQuick.Window 2.15
 import QtQuick.Controls 2.15
 
 Window {
-    property real r: .8
+    property real r: .5
     width: Screen.desktopAvailableWidth *r
     height: Screen.desktopAvailableHeight *r
     visible: true
@@ -56,12 +56,17 @@ Window {
     }
 
     Timer {
-        running: true
+//        running: true
         interval: 1000
         repeat: true
         onTriggered: {
             txt.text = Date().toString()
         }
     }
-
+    TapHandler {
+        onTapped: {
+            backend.resetVideo(1)
+            console.log("-------------")
+        }
+    }
 }

@@ -35,7 +35,7 @@ set(PROJECT_SOURCES
         qml.qrc
 )
 
-set(OBS_BUILD D:/obs/build-obs-studio-Desktop_Qt_5_15_2_MSVC2019_64bit-Debug)
+set(OBS_BUILD D:/obs/build)
 set(OBS_SOURCE D:/obs/obs-studio)
 
 include_directories(obscap)
